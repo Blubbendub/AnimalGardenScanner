@@ -3,6 +3,9 @@ import numpy as np
 import time
 import os
 
+# Set this variable to the absolute path where you want to save the output images.
+OUTPUT_ABSOLUTE_PATH = r"C:\Users\Linus\Documents\AnimalGardenScanner\Outputs"
+
 def detect_markers(frame):
     """Detect QR code for data, and ArUco markers for alignment."""
     # Detect QR code
@@ -130,7 +133,7 @@ def detect_qr_and_process(frame):
     # Increase the region by a margin (delta) to cover a slightly larger area.
     delta = 50
     # Apply a slight vertical adjustment (if needed)
-    vertical_adjustment = -25
+    vertical_adjustment = 10
 
     cropped = aligned[outline_y - delta + vertical_adjustment : outline_y + 2000 + delta + vertical_adjustment,
                       outline_x - delta : outline_x + 2000 + delta]
@@ -154,7 +157,11 @@ def detect_qr_and_process(frame):
     # Apply the mask to the cropped drawing area.
     result = apply_bw_mask(cropped_resized, mask_final)
 
-    output_path = f"output_{qr_data}.png"
+    # Create a timestamp string
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    # Generate the output filename with timestamp and QR data.
+    output_filename = f"output_{qr_data}_{timestamp}.png"
+    output_path = os.path.join(OUTPUT_ABSOLUTE_PATH, output_filename)
     cv2.imwrite(output_path, result, [cv2.IMWRITE_PNG_COMPRESSION, 9])
     print(f"Saved: {output_path}")
 
@@ -162,7 +169,9 @@ def detect_qr_and_process(frame):
     debug = aligned.copy()
     cv2.rectangle(debug, (outline_x - delta, outline_y - delta + vertical_adjustment),
                   (outline_x + 2000 + delta, outline_y + 2000 + delta + vertical_adjustment), (0, 0, 255), 5)
-    cv2.imwrite("debug_alignment_outline.png", debug)
+    debug_filename = f"debug_alignment_{qr_data}_{timestamp}.png"
+    debug_path = os.path.join(OUTPUT_ABSOLUTE_PATH, debug_filename)
+    cv2.imwrite(debug_path, debug)
 
     return result
 

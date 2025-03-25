@@ -85,5 +85,5 @@ def create_print_sheet(animals, outline_dir="outlines", output_dir="print_sheets
         print(f"Print sheet saved: {output_path}")
 
 if __name__ == "__main__":
-    animals = ["frog", "hedgehog", "lion", "tiger", "elephant"]
+    animals = ["weird_bird", "hedgehog", "hand_weasel", "orange_fish", "cockroach"]
     create_print_sheet(animals)
