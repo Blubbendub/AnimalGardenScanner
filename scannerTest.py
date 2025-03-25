@@ -86,10 +86,7 @@ def apply_bw_mask(image, mask):
         print("Error: Mask image not found.")
         return image
 
-    # Ensure the mask matches the image size
-    if mask.shape[:2] != image.shape[:2]:
-        mask = cv2.resize(mask, (image.shape[1], image.shape[0]))
-
+    # The mask is assumed to be the same size as the image.
     mask_gray = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY) if len(mask.shape) == 3 else mask
     _, binary_mask = cv2.threshold(mask_gray, 127, 255, cv2.THRESH_BINARY)
 
@@ -132,18 +129,30 @@ def detect_qr_and_process(frame):
 
     # Increase the region by a margin (delta) to cover a slightly larger area.
     delta = 50
-    # Adjust the region slightly lower by vertical_adjustment pixels.
-    vertical_adjustment = -30
+    # Apply a slight vertical adjustment (if needed)
+    vertical_adjustment = -25
 
     cropped = aligned[outline_y - delta + vertical_adjustment : outline_y + 2000 + delta + vertical_adjustment,
                       outline_x - delta : outline_x + 2000 + delta]
 
-    # Resize cropped area and mask to match resolution (e.g., 1000x1000)
+    # Resize cropped area to 1000x1000.
     cropped_resized = cv2.resize(cropped, (1000, 1000))
-    mask_resized = cv2.resize(mask, (1000, 1000))
+    
+    # Instead of resizing the mask to 1000x1000 directly, create a slightly smaller mask.
+    target_mask_size = 950  # New, smaller size for the mask content.
+    mask_small = cv2.resize(mask, (target_mask_size, target_mask_size))
+    # Create a blank mask of 1000x1000.
+    if len(mask.shape) == 3:
+        blank_mask = np.zeros((1000, 1000, mask.shape[2]), dtype=mask.dtype)
+    else:
+        blank_mask = np.zeros((1000, 1000), dtype=mask.dtype)
+    start_x = (1000 - target_mask_size) // 2
+    start_y = (1000 - target_mask_size) // 2
+    blank_mask[start_y:start_y+target_mask_size, start_x:start_x+target_mask_size] = mask_small
+    mask_final = blank_mask
 
-    # Apply the mask to the cropped drawing area
-    result = apply_bw_mask(cropped_resized, mask_resized)
+    # Apply the mask to the cropped drawing area.
+    result = apply_bw_mask(cropped_resized, mask_final)
 
     output_path = f"output_{qr_data}.png"
     cv2.imwrite(output_path, result, [cv2.IMWRITE_PNG_COMPRESSION, 9])
