@@ -57,7 +57,9 @@ def align_with_aruco_markers(image, marker_corners, ids, sheet_size):
 
     for i, marker_id in enumerate(ids.flatten()):
         if marker_id in id_to_position:
-            actual_points.append(marker_corners[i][0])
+        # Calculate the center of the marker from its four corners.
+            center = np.mean(marker_corners[i][0], axis=0)
+            actual_points.append(center)
             expected_points.append(id_to_position[marker_id])
 
     if len(actual_points) != 4:
