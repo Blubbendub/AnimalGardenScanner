@@ -8,3 +8,5 @@ weird_bird.png
 hand_weasel.png
 orange_fish.png
 cockroach.png
+
+animals = ["weird_bird", "hedgehog", "hand_weasel", "orange_fish", "cockroach"]

@@ -6,16 +6,19 @@ import os
 # Set this variable to the absolute path where you want to save the output images.
 OUTPUT_ABSOLUTE_PATH = r"C:\Users\Linus\Documents\AnimalGardenScanner\Outputs"
 
+# Global variable to track the last scanned identifier.
+last_scanned_id = ""
+
 def detect_markers(frame):
     """Detect QR code for data, and ArUco markers for alignment."""
-    # Detect QR code
+    # Detect QR code.
     qr_detector = cv2.QRCodeDetector()
     qr_data, points, _ = qr_detector.detectAndDecode(frame)
 
     if points is not None and points.shape[1] == 4:
         frame = cv2.polylines(frame, [np.int32(points)], True, (0, 255, 0), 2)
 
-    # Detect ArUco markers
+    # Detect ArUco markers.
     aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
     aruco_params = cv2.aruco.DetectorParameters()
     aruco_params.adaptiveThreshWinSizeMin = 3
@@ -46,7 +49,7 @@ def align_with_aruco_markers(image, marker_corners, ids, sheet_size):
         return None
 
     # Expected marker centers based on the print sheet design:
-    # Markers were placed with a margin=50 and marker_size=500, so centers are:
+    # Markers were placed with margin=50 and marker_size=500, so centers are:
     # Marker 0: (50+250, 50+250) = (300, 300)
     # Marker 1: (sheet_width - 50 - 250, 300) = (2180, 300)
     # Marker 2: (300, sheet_height - 50 - 250) = (300, 3208)
@@ -61,7 +64,7 @@ def align_with_aruco_markers(image, marker_corners, ids, sheet_size):
     actual_points = []
     expected_points = []
 
-    # Use the center of each detected marker for alignment
+    # Use the center of each detected marker for alignment.
     for i, marker_id in enumerate(ids.flatten()):
         if marker_id in expected_centers:
             center = np.mean(marker_corners[i][0], axis=0)
@@ -89,11 +92,9 @@ def apply_bw_mask(image, mask):
         print("Error: Mask image not found.")
         return image
 
-    # The mask is assumed to be the same size as the image.
     mask_gray = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY) if len(mask.shape) == 3 else mask
     _, binary_mask = cv2.threshold(mask_gray, 127, 255, cv2.THRESH_BINARY)
 
-    # Create a 4-channel result image with an alpha channel from the mask
     result = np.zeros((image.shape[0], image.shape[1], 4), dtype=np.uint8)
     result[:, :, :3] = image
     result[:, :, 3] = binary_mask
@@ -101,15 +102,26 @@ def apply_bw_mask(image, mask):
     return result
 
 def detect_qr_and_process(frame):
-    """Main logic to detect and extract the drawing region using ArUco markers, then apply the mask."""
+    """Main logic to detect and extract the drawing region using ArUco markers,
+       then apply the mask and output only if the QR code's identifier has changed.
+    """
+    global last_scanned_id
     qr_data, marker_corners, ids = detect_markers(frame)
 
     if qr_data is None or qr_data == "":
         print("No QR code found.")
         return frame
 
-    # Load mask based on QR code data (e.g., animal name)
-    mask_path = os.path.join("masks", f"{qr_data}.png")
+    # Only process if the identifier changes.
+    if qr_data == last_scanned_id:
+        print("Identifier unchanged, skipping output.")
+        return frame
+    else:
+        print(f"New identifier detected: {qr_data}")
+        last_scanned_id = qr_data
+
+    # Load mask based on QR code data (using only the animal part).
+    mask_path = os.path.join("masks", f"{qr_data.split('_')[0]}.png")
     if not os.path.exists(mask_path):
         print(f"Error: Mask for '{qr_data}' not found.")
         return frame
@@ -126,25 +138,21 @@ def detect_qr_and_process(frame):
         print("Could not align image with markers.")
         return frame
 
-    # Drawing area (outline) is centered and originally 2000x2000 on the sheet.
+    # Define the drawing area (outline) dimensions.
     outline_x = (sheet_size[0] - 2000) // 2
     outline_y = (sheet_size[1] - 2000) // 2
 
-    # Increase the region by a margin (delta) to cover a slightly larger area.
     delta = 50
-    # Apply a slight vertical adjustment (if needed)
     vertical_adjustment = 10
 
     cropped = aligned[outline_y - delta + vertical_adjustment : outline_y + 2000 + delta + vertical_adjustment,
                       outline_x - delta : outline_x + 2000 + delta]
 
-    # Resize cropped area to 1000x1000.
     cropped_resized = cv2.resize(cropped, (1000, 1000))
     
-    # Instead of resizing the mask to 1000x1000 directly, create a slightly smaller mask.
-    target_mask_size = 950  # New, smaller size for the mask content.
+    # Create a slightly smaller mask.
+    target_mask_size = 950
     mask_small = cv2.resize(mask, (target_mask_size, target_mask_size))
-    # Create a blank mask of 1000x1000.
     if len(mask.shape) == 3:
         blank_mask = np.zeros((1000, 1000, mask.shape[2]), dtype=mask.dtype)
     else:
@@ -154,24 +162,12 @@ def detect_qr_and_process(frame):
     blank_mask[start_y:start_y+target_mask_size, start_x:start_x+target_mask_size] = mask_small
     mask_final = blank_mask
 
-    # Apply the mask to the cropped drawing area.
     result = apply_bw_mask(cropped_resized, mask_final)
 
-    # Create a timestamp string
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    # Generate the output filename with timestamp and QR data.
-    output_filename = f"output_{qr_data}_{timestamp}.png"
+    output_filename = f"output_{qr_data}.png"
     output_path = os.path.join(OUTPUT_ABSOLUTE_PATH, output_filename)
     cv2.imwrite(output_path, result, [cv2.IMWRITE_PNG_COMPRESSION, 9])
     print(f"Saved: {output_path}")
-
-    # Debug image: draw the adjusted red rectangle
-    debug = aligned.copy()
-    cv2.rectangle(debug, (outline_x - delta, outline_y - delta + vertical_adjustment),
-                  (outline_x + 2000 + delta, outline_y + 2000 + delta + vertical_adjustment), (0, 0, 255), 5)
-    debug_filename = f"debug_alignment_{qr_data}_{timestamp}.png"
-    debug_path = os.path.join(OUTPUT_ABSOLUTE_PATH, debug_filename)
-    cv2.imwrite(debug_path, debug)
 
     return result
 
@@ -194,7 +190,6 @@ def main():
             cv2.imshow("Processed Image", processed_frame)
             last_capture_time = current_time
 
-            # Show debug info for ArUco detection
             vis_frame = frame.copy()
             qr_data, corners, ids = detect_markers(vis_frame)
             if ids is not None:
